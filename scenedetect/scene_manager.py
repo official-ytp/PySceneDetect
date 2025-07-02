@@ -165,16 +165,18 @@ def get_scenes_from_cuts(
     # Scene list, where scenes are tuples of (Start FrameTimecode, End FrameTimecode).
     scene_list = []
     if not cut_list:
-        scene_list.append((start_pos, end_pos))
+        scene_list.append(((start_pos, end_pos), 0.0))
         return scene_list
     # Initialize last_cut to the first frame we processed,as it will be
     # the start timecode for the first scene in the list.
     last_cut = start_pos
-    for cut in cut_list:
-        scene_list.append((last_cut, cut))
+    last_score = 0.0
+    for cut, score in cut_list:
+        scene_list.append(((last_cut, cut), last_score))
         last_cut = cut
+        last_score = score
     # Last scene is from last cut to end of video.
-    scene_list.append((last_cut, end_pos))
+    scene_list.append(((last_cut, end_pos), last_score))
 
     return scene_list
 
@@ -199,7 +201,7 @@ class SceneManager:
             stats_manager: :class:`StatsManager` to bind to this `SceneManager`. Can be
                 accessed via the `stats_manager` property of the resulting object to save to disk.
         """
-        self._cutting_list: ty.List[FrameTimecode] = []
+        self._cutting_list: ty.List[ty.Tuple[FrameTimecode, float]] = []
         self._detector_list: ty.List[SceneDetector] = []
         # TODO(v1.0): This class should own a StatsManager instead of taking an optional one.
         # Expose a new `stats_manager` @property from the SceneManager, and either change the
@@ -374,7 +376,7 @@ class SceneManager:
             scene_list = []
         return sorted(scene_list)
 
-    def _get_cutting_list(self) -> ty.List[FrameTimecode]:
+    def _get_cutting_list(self) -> ty.List[tuple[FrameTimecode, float]]:
         """Return a sorted list of unique frame numbers of any detected scene cuts."""
         if not self._cutting_list:
             return []
@@ -602,11 +604,11 @@ class SceneManager:
                 decoded_size = (frame_im.shape[1], frame_im.shape[0])
                 if self._frame_size is None:
                     self._frame_size = decoded_size
-                    if video.frame_size != decoded_size:
-                        logger.warn(
-                            f"WARNING: Decoded frame size ({decoded_size}) does not match "
-                            f" video resolution {video.frame_size}, possible corrupt input."
-                        )
+                    # if video.frame_size != decoded_size:
+                    #     logger.warn(
+                    #         f"WARNING: Decoded frame size ({decoded_size}) does not match "
+                    #         f" video resolution {video.frame_size}, possible corrupt input."
+                    #     )
                 elif self._frame_size != decoded_size:
                     self._frame_size_errors += 1
                     if self._frame_size_errors <= MAX_FRAME_SIZE_ERRORS:

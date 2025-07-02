@@ -187,7 +187,7 @@ class ContentDetector(SceneDetector):
 
     def process_frame(
         self, timecode: FrameTimecode, frame_img: numpy.ndarray
-    ) -> ty.List[FrameTimecode]:
+    ) -> ty.List[ty.Tuple[FrameTimecode, float]]:
         """Process the next frame. `frame_num` is assumed to be sequential.
 
         Args:
@@ -204,7 +204,7 @@ class ContentDetector(SceneDetector):
             return []
 
         above_threshold: bool = self._frame_score >= self._threshold
-        return self._flash_filter.filter(timecode=timecode, above_threshold=above_threshold)
+        return self._flash_filter.filter(timecode=timecode, above_threshold=above_threshold, score=self._frame_score)
 
     def _detect_edges(self, lum: numpy.ndarray) -> numpy.ndarray:
         """Detect edges using the luma channel of a frame.

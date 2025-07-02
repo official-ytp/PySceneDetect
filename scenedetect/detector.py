@@ -65,7 +65,7 @@ class SceneDetector:
 
     def process_frame(
         self, timecode: FrameTimecode, frame_img: numpy.ndarray
-    ) -> ty.List[FrameTimecode]:
+    ) -> ty.List[ty.Tuple[FrameTimecode, float]]:
         """Process the next frame. `frame_num` is assumed to be sequential.
 
         Args:
@@ -77,7 +77,7 @@ class SceneDetector:
         """
         return []
 
-    def post_process(self, timecode: int) -> ty.List[FrameTimecode]:
+    def post_process(self, timecode: int) -> ty.List[ty.Tuple[FrameTimecode, float]]:
         """Called after there are no more frames to process.
 
         Args:
@@ -116,6 +116,7 @@ class FlashFilter:
         self._mode = mode
         self._filter_length = length  # Number of frames to use for activating the filter.
         self._last_above = None  # Last frame above threshold.
+        self._last_above_score = 0.0  # Score of the last frame above threshold.
         self._merge_enabled = False  # Used to disable merging until at least one cut was found.
         self._merge_triggered = False  # True when the merge filter is active.
         self._merge_start = None  # Frame number where we started the merge filter.
@@ -124,39 +125,44 @@ class FlashFilter:
     def max_behind(self) -> int:
         return 0 if self._mode == FlashFilter.Mode.SUPPRESS else self._filter_length
 
-    def filter(self, timecode: FrameTimecode, above_threshold: bool) -> ty.List[FrameTimecode]:
+    def filter(self, timecode: FrameTimecode, above_threshold: bool, score=0.0) -> ty.List[ty.Tuple[FrameTimecode, float]]:
         if not self._filter_length > 0:
-            return [timecode] if above_threshold else []
+            return [(timecode, score)] if above_threshold else []
         if _USE_PTS_IN_DEVELOPMENT:
             raise NotImplementedError("TODO: Change filter to use units of time instead of frames.")
         if self._last_above is None:
             self._last_above = timecode
         if self._mode == FlashFilter.Mode.MERGE:
-            return self._filter_merge(frame_num=timecode, above_threshold=above_threshold)
+            return self._filter_merge(timecode=timecode, above_threshold=above_threshold, score=score)
         elif self._mode == FlashFilter.Mode.SUPPRESS:
-            return self._filter_suppress(frame_num=timecode, above_threshold=above_threshold)
+            return self._filter_suppress(timecode=timecode, above_threshold=above_threshold, score=score)
         raise RuntimeError("Unhandled FlashFilter mode.")
 
-    def _filter_suppress(self, frame_num: int, above_threshold: bool) -> ty.List[int]:
-        min_length_met: bool = (frame_num - self._last_above) >= self._filter_length
+    def _filter_suppress(self, timecode: FrameTimecode, above_threshold: bool, score=0.0) -> ty.List[ty.Tuple[FrameTimecode, float]]:
+        min_length_met: bool = (timecode - self._last_above) >= self._filter_length
         if not (above_threshold and min_length_met):
             return []
         # Both length and threshold requirements were satisfied. Emit the cut, and wait until both
         # requirements are met again.
-        self._last_above = frame_num
-        return [frame_num]
+        self._last_above = timecode
+        self._last_above_score = score
+        return [(timecode, score)]
 
-    def _filter_merge(self, frame_num: int, above_threshold: bool) -> ty.List[int]:
-        min_length_met: bool = (frame_num - self._last_above) >= self._filter_length
+    def _filter_merge(self, timecode: FrameTimecode, above_threshold: bool, score=0.0) -> ty.List[ty.Tuple[FrameTimecode, float]]:
+        min_length_met: bool = (timecode - self._last_above) >= self._filter_length
         # Ensure last frame is always advanced to the most recent one that was above the threshold.
         if above_threshold:
-            self._last_above = frame_num
+            self._last_above = timecode
+            self._last_above_score = score
         if self._merge_triggered:
-            # This frame was under the threshold, see if enough frames passed to disable the filter.
             num_merged_frames = self._last_above - self._merge_start
             if min_length_met and not above_threshold and num_merged_frames >= self._filter_length:
+                # The presently occuring scene has gone on longer than the min_length requirement.
+                # Therefore self._last_above is the beginning of the new, sufficiently long scene.
+                # We don't output self._merge_start; that one is the beginning of the first scene
+                # that was too short.
                 self._merge_triggered = False
-                return [self._last_above]
+                return [(self._last_above, self._last_above_score)]
             # Keep merging until enough frames pass below the threshold.
             return []
         # Wait for next frame above the threshold.
@@ -166,9 +172,10 @@ class FlashFilter:
         if min_length_met:
             # Only allow the merge filter once the first cut is emitted.
             self._merge_enabled = True
-            return [frame_num]
+            return [(timecode, score)]
         # Start merging cuts until the length requirement is met.
         if self._merge_enabled:
+            # We just had a scene that exceeded the threshold, but was not long enough.
             self._merge_triggered = True
-            self._merge_start = frame_num
+            self._merge_start = timecode
         return []

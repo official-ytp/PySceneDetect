@@ -76,10 +76,10 @@ _USE_PTS_IN_DEVELOPMENT = False
 ## Type Aliases
 ##
 
-SceneList = ty.List[ty.Tuple["FrameTimecode", "FrameTimecode"]]
+SceneList = ty.List[ty.Tuple[ty.Tuple["FrameTimecode", "FrameTimecode"], float]]
 """Type hint for a list of scenes in the form (start time, end time)."""
 
-CutList = ty.List["FrameTimecode"]
+CutList = ty.List[ty.Tuple["FrameTimecode", float]]
 """Type hint for a list of cuts, where each timecode represents the first frame of a new shot."""
 
 CropRegion = ty.Tuple[int, int, int, int]

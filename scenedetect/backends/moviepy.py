@@ -62,12 +62,15 @@ class VideoStreamMoviePy(VideoStream):
         # cases return IOErrors (e.g. could not read duration/video resolution). These
         # should be mapped to specific errors, e.g. write a function to map MoviePy
         # exceptions to a new set of equivalents.
-        self._reader = FFMPEG_VideoReader(path, print_infos=print_infos)
+        self._reader = FFMPEG_VideoReader(path,
+            print_infos=print_infos,
+            decode_file=False, # TODO: decode_file=True is buggy
+            target_resolution=(160, 120),
+        )
         # This will always be one behind self._reader.lastread when we finally call read()
         # as MoviePy caches the first frame when opening the video. Thus self._last_frame
         # will always be the current frame, and self._reader.lastread will be the next.
         self._last_frame: ty.Union[bool, np.ndarray] = False
-        self._last_frame_rgb: ty.Optional[np.ndarray] = None
         # Older versions don't track the video position when calling read_frame so we need
         # to keep track of the current frame number.
         self._frame_number = 0
@@ -200,7 +203,6 @@ class VideoStreamMoviePy(VideoStream):
     def reset(self, print_infos=False):
         """Close and re-open the VideoStream (should be equivalent to calling `seek(0)`)."""
         self._last_frame = False
-        self._last_frame_rgb = None
         self._frame_number = 0
         self._eof = False
         self._reader = FFMPEG_VideoReader(self._path, print_infos=print_infos)
@@ -221,6 +223,5 @@ class VideoStreamMoviePy(VideoStream):
         if decode:
             last_frame_valid = self._last_frame is not None and self._last_frame is not False
             if last_frame_valid:
-                self._last_frame_rgb = cv2.cvtColor(self._last_frame, cv2.COLOR_BGR2RGB)
-                return self._last_frame_rgb
+                return self._last_frame
         return not self._eof
